@@ -58,17 +58,80 @@ Cap 切片容量，即Data数据的大小
 * 只读 不支持直接修改string类型的内存空间
 * 在拼接和转换时要注意性能损耗
 
-
 ### 语言特性
 
 #### 函数调用
+
 * 传值
 * 通过栈传递函数的参数和返回值，所以可以有多个，c是寄存器，只能有一个泛返回值
 
 #### 接口
+
 * 隐式接口 鸭子类型
 * iface表示带有方法的接口，eface表示interface{}
 * interface{} 不是任意类型
 * 使用结构体指针实现接口，使用结构体初始化无法通过编译
 * 类型断言 通过比较itab.hash
 * 动态派发在运行期间确定具体调用的函数 会带来额外的开销
+
+#### 反射
+
+* 弥补语法表达能力上的劣势
+* typeOf，valueOf
+* 三大法则
+  * interface{}变量可以转换为反射对象
+  * 从反射对象可以获取interface{}变量
+  * 要修改反射对象，其值必须可设置
+* 可以判断某些类型是否遵循特定接口
+* 动态调用方法
+
+### 常用关键字
+
+#### for range
+
+* for-range也会被编译器转换成普通的for循环
+* 循环中的v2变量每次迭代都会被重新覆盖，赋值时会触发复制
+* 哈希表的for-range引入随机数保证遍历的随机性，桶的选择和桶内元素的遍历
+
+#### select
+
+* 类似操作系统中的select，构建io多路复用模型提升性能
+* 非阻塞收发，会执行default的语句
+* 随机执行，避免饥饿问题发生
+* 执行过程
+  * 在编译期间，Go语言会对 select语句进行优化，它会根据 select 中 case 的不同选择不同的优化路径。空的 select 语句会被转换成调用runtime.block 直接桂起当前 Goroutine。如果 select 语句中只包含一个case，编译器会将其转换成 if ch == nil { block );n;表达式：
+    * 首先判断操作的Channel是否为空；
+    * 然后执行 case 结构中的内容。
+  * 如果select 语句中只包含两个case 并且其中一个是default，非阻塞地执行收发操作。
+  * 默认情况下会通过runtime.selectgo 获取执行 case 的索引，并通过多条if语句执行对应 case中的代码。
+* 在编译器已经对select语句进行优化之后，Go语言会在运行时执行编译期间展开的runtine.selectgo函数，该函数会按照以下流程执行。
+  * 随机生成一个遍历的轮询顺序po110rder 并根据Channel 地址生成加锁顺序 1ockOrder。
+  * 根据pollorder遍历所有case，查看是否有可以立刻处理的 Channel:
+    * 如果存在，直接获取case 对应的索引并返回；
+    * 如果不存在，创建runtime.sudog 结构体，将当前Goroutine 加入所有相关 Channel 的收发队列，并调用runtime.gopark 挂起当前 Goroutine 等待调度器唤醒
+  * 当调度器唤醒当前 Goroutine 时，会再次按照lockOrder過历所有case，从中查找需要被处理的runtime.sudog 对应的索引。
+* select关键字是G0语言特有的控制结构，它的实现原理比较复杂。需要编译器和运行时函数共同合作执行
+
+#### defer
+
+* 作用域在当前函数，方法返回之前调用
+* 预计算参数
+* 后调用的defer会先执行
+* 多个difer构成链表
+* 执行机制
+  * 堆中分配 兜底方案
+  * 栈上分配 在函数中最多执行一次时
+  * 开放编码分配 编译期间确认是否开启
+    * 函数的defer少于等于8个
+    * defer关键字不能再循环中执行
+    * 函数return语句和defer语句乘积<15
+
+#### panic和recover
+* panic调用后会like停止执行当前的函数剩余代码
+* recover可以中止panic造成的程序崩溃，该函数只在defer中发挥作用
+* panic允许嵌套多次调用
+* 遇到panic后会一次调用defer链表执行，如果遇到recover，标志位true，并返回panic的参数，调回正常执行流程
+
+#### make和new
+* make是初始化内置的数据结构，切片、哈希表、channel
+* new作用是根据传入的类型分配一块内存空间，返回指向这块内存空间的指针。
